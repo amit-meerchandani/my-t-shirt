@@ -147,6 +147,7 @@ export default function EditorPage() {
             />
           </label>
 
+          
           {/* <button style={toolBtn} onClick={addText}>
             Add Text
           </button> */}

@@ -147,9 +147,9 @@ export default function EditorPage() {
             />
           </label>
 
-          <button style={toolBtn} onClick={addText}>
+          {/* <button style={toolBtn} onClick={addText}>
             Add Text
-          </button>
+          </button> */}
         </div>
 
         {/* CANVAS */}

@@ -7,7 +7,7 @@ import {
   Image as KonvaImage,
   Rect,
   Transformer,
-  Text,
+  Text as KonvaText,
 } from "react-konva";
 import { useEffect, useRef, useState } from "react";
 
@@ -26,6 +26,13 @@ type ControlBox = {
   height: number;
 };
 
+type TextItem = {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+};
+
 export default function EditorPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,6 +40,8 @@ export default function EditorPage() {
   const shirtImage = SHIRT_MAP[shirt] || SHIRT_MAP.white;
 
   const [uploadedImg, setUploadedImg] = useState<HTMLImageElement | null>(null);
+  const [texts, setTexts] = useState<TextItem[]>([]);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(false);
   const [controlBox, setControlBox] = useState<ControlBox | null>(null);
 
@@ -40,50 +49,63 @@ export default function EditorPage() {
   const trRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  /* Update bounding box safely */
-  const updateControlBox = () => {
-    if (!imageRef.current) return;
-    const box = imageRef.current.getClientRect();
+  const updateControlBox = (node?: any) => {
+    const target = node || imageRef.current;
+    if (!target) return;
+    const box = target.getClientRect();
     setControlBox(box);
   };
 
-  /* Attach transformer */
   useEffect(() => {
-    if (showControls && trRef.current && imageRef.current) {
-      trRef.current.nodes([imageRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-      updateControlBox();
-    }
-  }, [showControls]);
+    if (!showControls || !trRef.current) return;
 
-  /* Upload image */
+    if (selectedTextId) {
+      const textNode = trRef.current
+        .getLayer()
+        ?.findOne(`#${selectedTextId}`);
+      if (textNode) {
+        trRef.current.nodes([textNode]);
+        updateControlBox(textNode);
+      }
+    } else if (imageRef.current) {
+      trRef.current.nodes([imageRef.current]);
+      updateControlBox(imageRef.current);
+    }
+
+    trRef.current.getLayer()?.batchDraw();
+  }, [showControls, selectedTextId]);
+
   const onUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const img = new window.Image();
     img.src = URL.createObjectURL(file);
-
     img.onload = () => {
       setUploadedImg(img);
       setShowControls(false);
       setControlBox(null);
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      setSelectedTextId(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     };
   };
 
-  /* Delete image */
-  const deleteImage = () => {
-    setUploadedImg(null);
+  const addText = () => {
+    const id = Date.now().toString();
+    setTexts([...texts, { id, text: "Your Text", x: 140, y: 200 }]);
+    setSelectedTextId(id);
+    setShowControls(true);
+  };
+
+  const deleteSelected = () => {
+    if (selectedTextId) {
+      setTexts(texts.filter((t) => t.id !== selectedTextId));
+      setSelectedTextId(null);
+    } else {
+      setUploadedImg(null);
+    }
     setShowControls(false);
     setControlBox(null);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   return (
@@ -96,7 +118,6 @@ export default function EditorPage() {
         color: "#f9fafb",
       }}
     >
-      {/* Back */}
       <button
         onClick={() => router.push("/")}
         style={{
@@ -105,73 +126,36 @@ export default function EditorPage() {
           border: "none",
           color: "#a855f7",
           cursor: "pointer",
-          fontSize: "15px",
         }}
       >
         ← Back
       </button>
 
-      <h1 style={{ fontSize: "26px" }}>Design Your T-Shirt</h1>
-      <p style={{ color: "#cbd5e1" }}>
-        Editing: <b>{shirt.toUpperCase()}</b> T-shirt
-      </p>
+      <h1>Design Your T-Shirt</h1>
 
       <div style={{ display: "flex", gap: "24px", marginTop: "20px" }}>
         {/* TOOLS */}
-        <div
-          style={{
-            width: "220px",
-            background: "#1f2933",
-            padding: "16px",
-            borderRadius: "12px",
-          }}
-        >
+        <div style={panelStyle}>
           <label style={toolBtn}>
             Upload Image
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
               hidden
+              accept="image/*"
               onChange={onUpload}
             />
           </label>
+
+          <button style={toolBtn} onClick={addText}>
+            Add Text
+          </button>
         </div>
 
         {/* CANVAS */}
-        <div
-          style={{
-            flex: 1,
-            background: "#111827",
-            padding: "24px",
-            borderRadius: "16px",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 360,
-              height: 420,
-              background: shirt === "white" ? "#e5e7eb" : "#ffffff",
-              borderRadius: "18px",
-              position: "relative",
-            }}
-          >
-            {/* Shirt */}
-            <img
-              src={shirtImage}
-              alt="shirt"
-              style={{
-                width: "70%",
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                pointerEvents: "none",
-              }}
-            />
+        <div style={canvasWrap}>
+          <div style={shirtWrap}>
+            <img src={shirtImage} alt="shirt" style={shirtStyle} />
 
             <Stage
               width={360}
@@ -179,11 +163,11 @@ export default function EditorPage() {
               onMouseDown={(e) => {
                 if (e.target === e.target.getStage()) {
                   setShowControls(false);
+                  setSelectedTextId(null);
                   setControlBox(null);
                 }
               }}
             >
-              {/* MAIN LAYER */}
               <Layer>
                 <Rect
                   x={118}
@@ -204,17 +188,42 @@ export default function EditorPage() {
                     height={80}
                     draggable
                     onClick={() => {
+                      setSelectedTextId(null);
                       setShowControls(true);
-                      updateControlBox();
+                      updateControlBox(imageRef.current);
                     }}
-                    onTap={() => {
-                      setShowControls(true);
-                      updateControlBox();
-                    }}
-                    onDragMove={updateControlBox}
-                    onTransformEnd={updateControlBox}
+                    onDragMove={() => updateControlBox(imageRef.current)}
+                    onTransformEnd={() => updateControlBox(imageRef.current)}
                   />
                 )}
+
+                {texts.map((t) => (
+                  <KonvaText
+                    key={t.id}
+                    id={t.id}
+                    text={t.text}
+                    x={t.x}
+                    y={t.y}
+                    fontSize={24}
+                    fill="#000"
+                    draggable
+                    onClick={() => {
+                      setSelectedTextId(t.id);
+                      setShowControls(true);
+                    }}
+                    onDragMove={(e) => {
+                      setTexts(
+                        texts.map((tx) =>
+                          tx.id === t.id
+                            ? { ...tx, x: e.target.x(), y: e.target.y() }
+                            : tx
+                        )
+                      );
+                      updateControlBox(e.target);
+                    }}
+                    onTransformEnd={(e) => updateControlBox(e.target)}
+                  />
+                ))}
 
                 {showControls && (
                   <Transformer
@@ -228,17 +237,16 @@ export default function EditorPage() {
                 )}
               </Layer>
 
-              {/* UI LAYER */}
               <Layer listening>
                 {showControls && controlBox && (
-                  <Text
+                  <KonvaText
                     text="✕"
                     fontSize={16}
                     fill="#ef4444"
                     x={controlBox.x + controlBox.width - 6}
                     y={controlBox.y - 18}
                     cursor="pointer"
-                    onClick={deleteImage}
+                    onClick={deleteSelected}
                   />
                 )}
               </Layer>
@@ -250,7 +258,15 @@ export default function EditorPage() {
   );
 }
 
-const toolBtn: React.CSSProperties = {
+/* styles */
+const panelStyle = {
+  width: "220px",
+  background: "#1f2933",
+  padding: "16px",
+  borderRadius: "12px",
+};
+
+const toolBtn = {
   width: "100%",
   padding: "12px",
   marginBottom: "12px",
@@ -259,4 +275,30 @@ const toolBtn: React.CSSProperties = {
   background: "#374151",
   color: "#f9fafb",
   cursor: "pointer",
+};
+
+const canvasWrap = {
+  flex: 1,
+  background: "#111827",
+  padding: "24px",
+  borderRadius: "16px",
+  display: "flex",
+  justifyContent: "center",
+};
+
+const shirtWrap = {
+  width: 360,
+  height: 420,
+  background: "#fff",
+  borderRadius: "18px",
+  position: "relative" as const,
+};
+
+const shirtStyle = {
+  width: "70%",
+  position: "absolute" as const,
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  pointerEvents: "none" as const,
 };

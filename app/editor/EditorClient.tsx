@@ -26,13 +26,6 @@ type ControlBox = {
   height: number;
 };
 
-type TextItem = {
-  id: string;
-  text: string;
-  x: number;
-  y: number;
-};
-
 export default function EditorPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -40,72 +33,116 @@ export default function EditorPage() {
   const shirtImage = SHIRT_MAP[shirt] || SHIRT_MAP.white;
 
   const [uploadedImg, setUploadedImg] = useState<HTMLImageElement | null>(null);
-  const [texts, setTexts] = useState<TextItem[]>([]);
-  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(false);
   const [controlBox, setControlBox] = useState<ControlBox | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [shirtKonvaImg, setShirtKonvaImg] = useState<HTMLImageElement | null>(
+    null
+  );
 
   const imageRef = useRef<any>(null);
   const trRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const stageRef = useRef<any>(null);
 
+  /* ---------- Helpers ---------- */
   const updateControlBox = (node?: any) => {
     const target = node || imageRef.current;
     if (!target) return;
-    const box = target.getClientRect();
-    setControlBox(box);
+    // getClientRect provides the bounding box including rotation
+    setControlBox(target.getClientRect());
   };
 
+  const resetAfterUpload = () => {
+    setProcessing(false);
+    setShowControls(false);
+    setControlBox(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  /* ---------- Transformer ---------- */
   useEffect(() => {
-    if (!showControls || !trRef.current) return;
+    if (!showControls || previewMode || !trRef.current || !imageRef.current)
+      return;
 
-    if (selectedTextId) {
-      const textNode = trRef.current
-        .getLayer()
-        ?.findOne(`#${selectedTextId}`);
-      if (textNode) {
-        trRef.current.nodes([textNode]);
-        updateControlBox(textNode);
-      }
-    } else if (imageRef.current) {
-      trRef.current.nodes([imageRef.current]);
-      updateControlBox(imageRef.current);
-    }
-
+    trRef.current.nodes([imageRef.current]);
     trRef.current.getLayer()?.batchDraw();
-  }, [showControls, selectedTextId]);
+    updateControlBox(imageRef.current);
+  }, [showControls, previewMode]);
 
-  const onUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const img = new Image();
+    img.src = shirtImage;
+    img.onload = () => setShirtKonvaImg(img);
+  }, [shirtImage]);
+
+  /* ---------- Upload ---------- */
+  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const img = new window.Image();
-    img.src = URL.createObjectURL(file);
-    img.onload = () => {
-      setUploadedImg(img);
-      setShowControls(false);
-      setControlBox(null);
-      setSelectedTextId(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    };
-  };
+    setProcessing(true);
 
-  const addText = () => {
-    const id = Date.now().toString();
-    setTexts([...texts, { id, text: "Your Text", x: 140, y: 200 }]);
-    setSelectedTextId(id);
-    setShowControls(true);
-  };
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-  const deleteSelected = () => {
-    if (selectedTextId) {
-      setTexts(texts.filter((t) => t.id !== selectedTextId));
-      setSelectedTextId(null);
-    } else {
-      setUploadedImg(null);
+      const res = await fetch("/api/remove-bg", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error("remove.bg failed");
+
+      const blob = await res.blob();
+      const img = new Image();
+      img.src = URL.createObjectURL(blob);
+      img.onload = () => {
+        setUploadedImg(img);
+        resetAfterUpload();
+      };
+    } catch {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        setUploadedImg(img);
+        resetAfterUpload();
+      };
     }
+  };
+
+  const deleteImage = () => {
+    setUploadedImg(null);
     setShowControls(false);
     setControlBox(null);
+  };
+
+  const downloadDesign = () => {
+    if (!stageRef.current) return;
+
+    const prevPreview = previewMode;
+    const prevControls = showControls;
+
+    setPreviewMode(true);
+    setShowControls(false);
+
+    setTimeout(() => {
+      const uri = stageRef.current.toDataURL({
+        pixelRatio: 3,
+        mimeType: "image/png",
+      });
+
+      const link = document.createElement("a");
+      link.download = "tshirt-design.png";
+      link.href = uri;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setPreviewMode(prevPreview);
+      setShowControls(prevControls);
+    }, 60);
   };
 
   return (
@@ -113,71 +150,86 @@ export default function EditorPage() {
       style={{
         minHeight: "100vh",
         background: "#0f172a",
-        padding: "24px",
+        padding: 24,
         fontFamily: "Arial",
         color: "#f9fafb",
       }}
     >
       <button
         onClick={() => router.push("/")}
-        style={{
-          marginBottom: "16px",
-          background: "transparent",
-          border: "none",
-          color: "#a855f7",
-          cursor: "pointer",
-        }}
+        style={{ color: "#a855f7", background: "none", border: "none" }}
       >
         ← Back
       </button>
 
       <h1>Design Your T-Shirt</h1>
 
-      <div style={{ display: "flex", gap: "24px", marginTop: "20px" }}>
-        {/* TOOLS */}
+      <div style={{ display: "flex", gap: 24, marginTop: 20 }}>
         <div style={panelStyle}>
           <label style={toolBtn}>
-            Upload Image
+            {processing ? "Removing few pixels…" : "Upload Image"}
             <input
               ref={fileInputRef}
               type="file"
               hidden
               accept="image/*"
+              disabled={processing}
               onChange={onUpload}
             />
           </label>
-
-          
-          {/* <button style={toolBtn} onClick={addText}>
-            Add Text
-          </button> */}
         </div>
 
-        {/* CANVAS */}
         <div style={canvasWrap}>
           <div style={shirtWrap}>
-            <img src={shirtImage} alt="shirt" style={shirtStyle} />
-
             <Stage
+              ref={stageRef}
               width={360}
               height={420}
               onMouseDown={(e) => {
-                if (e.target === e.target.getStage()) {
+                // Clicked on empty space (not an image)
+                const clickedOnEmpty = e.target === e.target.getStage();
+                if (clickedOnEmpty) {
                   setShowControls(false);
-                  setSelectedTextId(null);
                   setControlBox(null);
                 }
               }}
             >
               <Layer>
-                <Rect
-                  x={118}
-                  y={134}
-                  width={120}
-                  height={185}
-                  stroke="#a855f7"
-                  dash={[6, 4]}
-                />
+                {shirtKonvaImg && (
+                  <KonvaImage
+                    image={shirtKonvaImg}
+                    x={0}
+                    y={0}
+                    width={360}
+                    height={420}
+                    sceneFunc={(context, shape) => {
+                      const img = shape.image();
+                      if (img) {
+                        const scale = 0.7;
+                        const w = 480 * scale;
+                        const h = 680 * scale;
+                        context.drawImage(
+                          img,
+                          (360 - w) / 2,
+                          (420 - h) / 2,
+                          w,
+                          h
+                        );
+                      }
+                    }}
+                  />
+                )}
+
+                {!previewMode && (
+                  <Rect
+                    x={108}
+                    y={130}
+                    width={140}
+                    height={195}
+                    stroke="#a855f7"
+                    dash={[6, 4]}
+                  />
+                )}
 
                 {uploadedImg && (
                   <KonvaImage
@@ -187,71 +239,111 @@ export default function EditorPage() {
                     y={160}
                     width={80}
                     height={80}
-                    draggable
-                    onClick={() => {
-                      setSelectedTextId(null);
+                    draggable={!previewMode}
+                    onClick={(e) => {
+                      if (previewMode) return;
+                      e.cancelBubble = true; // IMPORTANT: prevents Stage from clearing selection immediately
                       setShowControls(true);
                       updateControlBox(imageRef.current);
                     }}
                     onDragMove={() => updateControlBox(imageRef.current)}
+                    // Added onTransform to keep the "X" button following the image during rotation/scaling
+                    onTransform={() => updateControlBox(imageRef.current)}
                     onTransformEnd={() => updateControlBox(imageRef.current)}
                   />
                 )}
 
-                {texts.map((t) => (
-                  <KonvaText
-                    key={t.id}
-                    id={t.id}
-                    text={t.text}
-                    x={t.x}
-                    y={t.y}
-                    fontSize={24}
-                    fill="#000"
-                    draggable
-                    onClick={() => {
-                      setSelectedTextId(t.id);
-                      setShowControls(true);
-                    }}
-                    onDragMove={(e) => {
-                      setTexts(
-                        texts.map((tx) =>
-                          tx.id === t.id
-                            ? { ...tx, x: e.target.x(), y: e.target.y() }
-                            : tx
-                        )
-                      );
-                      updateControlBox(e.target);
-                    }}
-                    onTransformEnd={(e) => updateControlBox(e.target)}
-                  />
-                ))}
+                {/* 4. TRANSFORMER */}
 
-                {showControls && (
+                {showControls && !previewMode && (
+
                   <Transformer
+
                     ref={trRef}
-                    rotateEnabled={false}
+
+                    rotateEnabled={true}
+
                     borderStroke="#a855f7"
+
                     anchorStroke="#a855f7"
+
                     anchorFill="#a855f7"
+
                     anchorSize={8}
+
+                    anchorStyleFunc={(anchor) => {
+            // make all anchors circles
+            anchor.cornerRadius(50);
+            // make all anchors red
+            anchor.fill('white');
+          }}
+
                   />
+
                 )}
+
               </Layer>
 
-              <Layer listening>
-                {showControls && controlBox && (
+              <Layer>
+                {showControls && !previewMode && controlBox && (
                   <KonvaText
                     text="✕"
-                    fontSize={16}
+                    fontSize={18}
                     fill="#ef4444"
-                    x={controlBox.x + controlBox.width - 6}
-                    y={controlBox.y - 18}
+                    x={controlBox.x + controlBox.width - 5}
+                    y={controlBox.y - 20}
                     cursor="pointer"
-                    onClick={deleteSelected}
+                    onClick={deleteImage}
                   />
                 )}
               </Layer>
             </Stage>
+
+            <button
+              onClick={() => setPreviewMode((prev) => !prev)}
+              style={{
+                position: "absolute",
+                right: -80,
+                top: "35%",
+                transform: "translateY(-50%)",
+                width: 48,
+                height: 48,
+                borderRadius: "20%",
+                background: previewMode ? "#a855f7" : "",
+                border: "solid",
+                borderColor: "#a855f7",
+                cursor: "pointer",
+                boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
+              }}
+              title={previewMode ? "Exit Preview" : "Preview"}
+            >
+              <img
+                src="https://i.ibb.co/5XrhZJ2x/tshirt.png"
+                style={{ position: "relative", width: 35, left: 4.25 }}
+                alt="preview"
+              />
+            </button>
+
+            <button
+              onClick={downloadDesign}
+              style={{
+                position: "absolute",
+                right: -80,
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: 48,
+                height: 48,
+                borderRadius: "20%",
+                background: "#a855f7",
+                border: "solid",
+                borderColor: "#a855f7",
+                cursor: "pointer",
+                boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
+              }}
+              title="Download Design"
+            >
+              ⬇
+            </button>
           </div>
         </div>
       </div>
@@ -259,47 +351,33 @@ export default function EditorPage() {
   );
 }
 
-/* styles */
+/* ---------- Styles (Unchanged) ---------- */
 const panelStyle = {
-  width: "220px",
+  width: 220,
   background: "#1f2933",
-  padding: "16px",
-  borderRadius: "12px",
+  padding: 16,
+  borderRadius: 12,
 };
-
 const toolBtn = {
   width: "100%",
-  padding: "12px",
-  marginBottom: "12px",
-  borderRadius: "8px",
-  border: "none",
+  padding: 12,
+  borderRadius: 8,
   background: "#374151",
-  color: "#f9fafb",
+  color: "#fff",
   cursor: "pointer",
 };
-
 const canvasWrap = {
   flex: 1,
   background: "#111827",
-  padding: "24px",
-  borderRadius: "16px",
+  padding: 24,
+  borderRadius: 16,
   display: "flex",
   justifyContent: "center",
 };
-
 const shirtWrap = {
   width: 360,
   height: 420,
   background: "#fff",
-  borderRadius: "18px",
+  borderRadius: 18,
   position: "relative" as const,
-};
-
-const shirtStyle = {
-  width: "70%",
-  position: "absolute" as const,
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  pointerEvents: "none" as const,
 };

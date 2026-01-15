@@ -10,6 +10,7 @@ const COLORS = [
   { name: "White", hex: "#ffffff", image: "/tshirts/white.png" },
 ];
 
+
 export default function HomePage() {
   const [selected, setSelected] = useState(COLORS[0]);
 

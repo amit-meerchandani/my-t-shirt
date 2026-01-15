@@ -19,6 +19,7 @@ const SHIRT_MAP: Record<string, string> = {
   white: "/tshirts/white.png",
 };
 
+
 type ControlBox = {
   x: number;
   y: number;

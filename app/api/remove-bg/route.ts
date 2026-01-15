@@ -22,6 +22,7 @@ export async function POST(req: Request) {
       );
     }
 
+    
     const body = new FormData();
     body.append("image_file", file);
     body.append("size", "auto");

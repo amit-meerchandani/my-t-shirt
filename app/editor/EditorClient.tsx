@@ -19,7 +19,6 @@ const SHIRT_MAP: Record<string, string> = {
   white: "/tshirts/white.png",
 };
 
-
 type ControlBox = {
   x: number;
   y: number;
@@ -199,34 +198,20 @@ export default function EditorPage() {
                 {shirtKonvaImg && (
                   <KonvaImage
                     image={shirtKonvaImg}
-                    x={0}
-                    y={0}
-                    width={360}
-                    height={420}
-                    sceneFunc={(context, shape) => {
-                      const img = shape.image();
-                      if (img) {
-                        const scale = 0.7;
-                        const w = 480 * scale;
-                        const h = 680 * scale;
-                        context.drawImage(
-                          img,
-                          (360 - w) / 2,
-                          (420 - h) / 2,
-                          w,
-                          h
-                        );
-                      }
-                    }}
+                    x={10}
+                    y={-20}
+                    width={340}
+                    height={460}
+                    listening={false}
                   />
                 )}
 
                 {!previewMode && (
                   <Rect
                     x={108}
-                    y={130}
+                    y={135}
                     width={140}
-                    height={195}
+                    height={190}
                     stroke="#a855f7"
                     dash={[6, 4]}
                   />
@@ -257,32 +242,21 @@ export default function EditorPage() {
                 {/* 4. TRANSFORMER */}
 
                 {showControls && !previewMode && (
-
                   <Transformer
-
                     ref={trRef}
-
                     rotateEnabled={true}
-
                     borderStroke="#a855f7"
-
                     anchorStroke="#a855f7"
-
                     anchorFill="#a855f7"
-
                     anchorSize={8}
-
                     anchorStyleFunc={(anchor) => {
-            // make all anchors circles
-            anchor.cornerRadius(50);
-            // make all anchors red
-            anchor.fill('white');
-          }}
-
+                      // make all anchors circles
+                      anchor.cornerRadius(50);
+                      // make all anchors red
+                      anchor.fill("white");
+                    }}
                   />
-
                 )}
-
               </Layer>
 
               <Layer>
